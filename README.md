@@ -1,184 +1,199 @@
-[![Mentioned in Awesome Foundry](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/crisgarner/awesome-foundry)
+# ERC721 Diamond (Beginner Guide)
 
-# Foundry + Hardhat Diamonds
+This repository is an implementation of EIP-2535 (Diamond Standard) with an ERC721 facet.
 
-This is a mimimal template for [Diamonds](https://github.com/ethereum/EIPs/issues/2535) which allows facet selectors to be generated on the go in solidity tests!
+If Diamonds still feel confusing, the shortest mental model is:
 
-## Installation
+1. The Diamond is one contract address users interact with.
+2. That address does not contain all logic directly.
+3. It forwards each function call to a facet contract based on function selector.
+4. All facets share the same storage because they run via delegatecall.
+5. You can upgrade by changing selector -> facet mappings via diamondCut.
 
-- Clone this repo
-- Install dependencies
+## Why use a Diamond?
+
+1. You avoid contract size limits by splitting logic into facets.
+2. You can upgrade specific groups of functions without redeploying everything.
+3. You keep one stable address for users and integrations.
+
+Tradeoff: architecture is more complex than a single contract and storage layout discipline is critical.
+
+## Core concept in this repo
+
+There are two main storage areas:
+
+1. Diamond routing storage in LibDiamond:
+   - selector to facet mapping
+   - facet selector lists
+   - ownership
+   - ERC165 support flags
+2. App storage in LibAppStorage:
+   - ERC721 data (name, symbol, owners, balances, approvals, totalSupply)
+
+Because facets execute through delegatecall, they read/write the Diamond storage, not their own.
+
+## How a call flows
+
+1. User calls Diamond address.
+2. Diamond fallback reads msg.sig.
+3. Fallback finds facet from selectorToFacetAndPosition.
+4. Fallback delegatecalls facet.
+5. Facet logic executes with Diamond storage context.
+
+## File-by-file guide
+
+### Root config
+
+- foundry.toml
+  - Foundry settings for build/test/script behavior.
+  - Important here: ffi is enabled for selector generation helpers in tests.
+
+- remappings.txt
+  - Import path remappings (forge-std and solidity-stringutils).
+
+### contracts/
+
+- [contracts/Diamond.sol](contracts/Diamond.sol)
+  - The proxy-like entrypoint users call.
+  - Constructor sets owner and installs only diamondCut at deployment.
+  - fallback() routes function selectors to facets via delegatecall.
+  - example() is an immutable function in the Diamond itself.
+
+#### contracts/libraries/
+
+- [contracts/libraries/LibDiamond.sol](contracts/libraries/LibDiamond.sol)
+  - Brain of selector routing and upgrades.
+  - Defines DiamondStorage at fixed slot keccak256("diamond.standard.diamond.storage").
+  - Implements add/replace/remove selector logic.
+  - Enforces owner checks and code-existence checks.
+  - Emits DiamondCut and OwnershipTransferred events.
+
+- [contracts/libraries/LibAppStorage.sol](contracts/libraries/LibAppStorage.sol)
+  - App-specific shared storage for ERC721 facet(s).
+  - Uses slot 0 for AppStorage.
+  - Current fields include name, symbol, owners, balances, approvals, totalSupply.
+
+#### contracts/interfaces/
+
+- [contracts/interfaces/IDiamondCut.sol](contracts/interfaces/IDiamondCut.sol)
+  - Standard upgrade interface with FacetCut and diamondCut.
+
+- [contracts/interfaces/IDiamondLoupe.sol](contracts/interfaces/IDiamondLoupe.sol)
+  - Standard view interface to inspect facet addresses/selectors.
+
+- [contracts/interfaces/IERC165.sol](contracts/interfaces/IERC165.sol)
+  - ERC165 supportsInterface interface.
+
+- [contracts/interfaces/IERC173.sol](contracts/interfaces/IERC173.sol)
+  - Ownership standard interface for owner and transferOwnership.
+
+- [contracts/interfaces/IERC721.sol](contracts/interfaces/IERC721.sol)
+  - ERC721 external function/event interface used by ERC721Facet.
+
+- [contracts/interfaces/IERC721Receiver.sol](contracts/interfaces/IERC721Receiver.sol)
+  - Receiver callback interface for safe NFT transfers to contracts.
+
+#### contracts/facets/
+
+- [contracts/facets/DiamondCutFacet.sol](contracts/facets/DiamondCutFacet.sol)
+  - Exposes external diamondCut.
+  - Restricts upgrade calls to owner.
+  - Delegates implementation details to LibDiamond.
+
+- [contracts/facets/DiamondLoupeFacet.sol](contracts/facets/DiamondLoupeFacet.sol)
+  - Read-only introspection tools.
+  - Lets you query facets, selectors, and supportsInterface.
+
+- [contracts/facets/OwnershipFacet.sol](contracts/facets/OwnershipFacet.sol)
+  - Exposes owner() and transferOwnership().
+
+- [contracts/facets/ERC721facet.sol](contracts/facets/ERC721facet.sol)
+  - Your NFT business logic.
+  - Initializes name/symbol and marks IERC721 as supported.
+  - Implements minting, approvals, transfers, safe transfers.
+  - tokenURI is fully on-chain JSON + SVG generation.
+  - Uses AppStorage via LibAppStorage.diamondStorage().
+
+#### contracts/upgradeInitializers/
+
+- [contracts/upgradeInitializers/DiamondInit.sol](contracts/upgradeInitializers/DiamondInit.sol)
+  - Optional initializer to set supported interface ids during cut.
+  - Pattern: pass this as _init with init() calldata during upgrade/deploy cut.
+
+### script/
+
+- [script/DiamondUpgradeExample.s.sol](script/DiamondUpgradeExample.s.sol)
+  - Foundry broadcast script template for add/replace/remove upgrades.
+  - Uses DiamondUpgradeHelper to generate cuts from facet names.
+
+### test/
+
+- [test/deployDiamond.t.sol](test/deployDiamond.t.sol)
+  - Example deploy and first upgrade flow in tests.
+  - Deploys DiamondCutFacet + Diamond, then adds Loupe and Ownership facets.
+
+- [test/helpers/DiamondUtils.sol](test/helpers/DiamondUtils.sol)
+  - Uses forge inspect via FFI to derive selectors from facet ABI signatures.
+
+- [test/helpers/DiamondUpgradeHelper.sol](test/helpers/DiamondUpgradeHelper.sol)
+  - Utility layer to build add/replace/remove/extend cuts safely.
+  - Reduces boilerplate when upgrading in tests/scripts.
+
+### lib/
+
+- lib/forge-std
+  - Foundry standard library for Test, Script, Vm utilities.
+
+- lib/solidity-stringutils
+  - String helpers used by selector parsing helper.
+
+## Deployment and upgrade lifecycle (practical)
+
+1. Deploy DiamondCutFacet.
+2. Deploy Diamond with owner and DiamondCutFacet address.
+3. Deploy other facets (Loupe, Ownership, ERC721, etc.).
+4. Build FacetCut[] for Add/Replace/Remove.
+5. Call diamondCut through Diamond address.
+6. Optionally execute initializer (_init + _calldata).
+
+## Diamond storage safety rules
+
+1. Never change existing AppStorage field order/types after deployment.
+2. Only append new fields at the end of AppStorage for upgrades.
+3. Keep all facets using the same AppStorage definition.
+4. Be careful when removing fields if a Diamond is already live.
+
+## Common confusion points (and quick answers)
+
+1. Is Diamond like a proxy?
+   - Yes, conceptually. It routes calls, but routing table is selector-based and multi-facet.
+
+2. Where is state actually stored?
+   - In the Diamond storage context. Facets do not keep independent state.
+
+3. Why both LibDiamond and LibAppStorage?
+   - LibDiamond is framework-level routing/ownership storage.
+   - LibAppStorage is app-level domain data (your ERC721 state).
+
+4. What does diamondCut actually change?
+   - It updates mapping from function selectors to facet addresses.
+
+## Useful commands
 
 ```bash
-$ yarn && forge update
+forge build
+forge test -vv
+forge script script/DiamondUpgradeExample.s.sol:DiamondUpgradeExample --rpc-url <RPC_URL> --private-key <PK> --broadcast
 ```
 
-### Compile
+## If you want this even simpler
 
-```bash
-$ npx hardhat compile
-```
+Start by reading in this exact order:
 
-## Deployment
+1. [contracts/Diamond.sol](contracts/Diamond.sol)
+2. [contracts/libraries/LibDiamond.sol](contracts/libraries/LibDiamond.sol)
+3. [contracts/libraries/LibAppStorage.sol](contracts/libraries/LibAppStorage.sol)
+4. [contracts/facets/DiamondCutFacet.sol](contracts/facets/DiamondCutFacet.sol)
+5. [contracts/facets/ERC721facet.sol](contracts/facets/ERC721facet.sol)
 
-### Hardhat
-
-```bash
-$ npx hardhat run scripts/deploy.js
-```
-
-### Foundry
-
-```bash
-$ forge t
-```
-
-`Note`: A lot of improvements are still needed so contributions are welcome!!
-
-Bonus: The [DiamondLoupefacet](contracts/facets/DiamondLoupeFacet.sol) uses an updated [LibDiamond](contracts/libraries//LibDiamond.sol) which utilises solidity custom errors to make debugging easier especially when upgrading diamonds. Take it for a spin!!
-
-Need some more clarity? message me [on twitter](https://twitter.com/Timidan_x), Or join the [EIP-2535 Diamonds Discord server](https://discord.gg/kQewPw2)
-
-## Diamond Upgrade Helper (Foundry)
-
-This repository includes a Foundry-based helper and script that make it easy to perform EIP-2535 diamond upgrades in tests and scripts without hand-assembling selector arrays.
-
-### Overview
-
-- `test/helpers/DiamondUtils.sol` dynamically generates function selectors using `forge inspect <Facet> methods --json` and parses them inside Solidity via FFI.
-- `test/helpers/DiamondUpgradeHelper.sol` builds one-shot Add/Replace/Remove cuts and executes diamond upgrades via `IDiamondCut`.
-- `script/DiamondUpgrade.s.sol` is a generic Foundry script to upgrade an existing diamond using environment variables.
-
-> Note: FFI must be enabled in `foundry.toml` (`ffi=true`) for selector generation.
-
-### Installation/Setup
-
-- Ensure remappings include `forge-std` and `solidity-stringutils` (already configured in this repo):
-  - See `remappings.txt` and `foundry.toml`.
-- Ensure `ffi=true` in `foundry.toml`.
-
-### Helper APIs
-
-Located at `test/helpers/DiamondUpgradeHelper.sol` (import and inherit in your test/script).
-
-- `buildAddCutByName(address facetAddress, string facetName)`
-  - Generates all selectors of `facetName` and returns one Add cut.
-- `buildAddCutsByNames(address[] facetAddresses, string[] facetNames)`
-  - Batch of Add cuts; arrays must match in length and order.
-- `buildReplaceCutByName(IDiamondLoupe loupe, address facetAddress, string facetName)`
-  - Computes selectors for `facetName` and returns a Replace cut for selectors that currently exist on the diamond and point to a different facet address.
-- `buildReplaceCutsByNames(IDiamondLoupe loupe, address[] facetAddresses, string[] facetNames)`
-  - Batch replacement; see semantics above.
-- `buildAddMissingCutByName(IDiamondLoupe loupe, address facetAddress, string facetName)`
-  - Add-only for selectors that do not already exist on the diamond.
-- `buildExtendCutsByName(IDiamondLoupe loupe, address facetAddress, string facetName)`
-  - Returns a 1–2 element array combining Replace (existing selectors) and Add (new selectors) to extend a facet implementation with new functions.
-- `buildRemoveCut(bytes4[] selectors)`
-  - Returns a Remove cut for the given selectors.
-- `executeDiamondCut(IDiamondCut diamond, IDiamondCut.FacetCut[] cuts, address init, bytes initCalldata)`
-  - Executes a diamond cut with optional init call.
-
-### Typical Scenarios
-
-1. Add new facets to a fresh or partially configured diamond:
-
-```solidity
-address[] memory addAddrs = new address[](2);
-addAddrs[0] = address(loupeFacet);
-addAddrs[1] = address(ownershipFacet);
-
-string[] memory names = new string[](2);
-names[0] = "DiamondLoupeFacet";
-names[1] = "OwnershipFacet";
-
-IDiamondCut.FacetCut[] memory cuts = buildAddCutsByNames(addAddrs, names);
-executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
-```
-
-2. Extend an existing facet (replace 3 existing selectors and add 1 new selector):
-
-```solidity
-// newFacet implements the same 3 old functions and 1 new
-IDiamondCut.FacetCut[] memory cuts = buildExtendCutsByName(
-    IDiamondLoupe(address(diamond)),
-    address(newFacet),
-    "YourFacetName"
-);
-executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
-```
-
-3. Replace an existing facet implementation (only for selectors that already exist on the diamond):
-
-```solidity
-IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](1);
-cuts[0] = buildReplaceCutByName(IDiamondLoupe(address(diamond)), address(newFacet), "YourFacetName");
-executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
-```
-
-4. Remove selectors:
-
-```solidity
-bytes4[] memory toRemove = new bytes4[](2);
-toRemove[0] = YourFacet.oldFunction.selector;
-toRemove[1] = bytes4(keccak256("someSig(uint256,bool)"));
-
-IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](1);
-cuts[0] = buildRemoveCut(toRemove);
-executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
-```
-
-### Scripted Upgrades (Foundry Script)
-
-Use `script/DiamondUpgradeExample.s.sol` with hardcoded configuration inside `run()`.
-
-- Open `script/DiamondUpgrade.s.sol` and set:
-  - `diamond` to your target diamond address
-  - `addFacetAddresses` and `addFacetNames` for new facets to add
-  - `replaceFacetAddresses` and `replaceFacetNames` for facets whose existing selectors should be migrated
-  - `removeSelectors` for selectors to remove (optional)
-  - `init` and `initCalldata` if you need an initialization call (optional)
-
-Example (inside `run()`):
-
-```solidity
-address diamond = 0x000000000000000000000000000000000000dEaD;
-address[] memory addFacetAddresses = new address[](2);
-addFacetAddresses[0] = 0x1111111111111111111111111111111111111111;
-addFacetAddresses[1] = 0x2222222222222222222222222222222222222222;
-string[] memory addFacetNames = new string[](2);
-addFacetNames[0] = "DiamondLoupeFacet";
-addFacetNames[1] = "OwnershipFacet";
-// Optional replace & remove
-address[] memory replaceFacetAddresses = new address[](0);
-string[] memory replaceFacetNames = new string[](0);
-bytes4[] memory removeSelectors = new bytes4[](0);
-address init = address(0);
-bytes memory initCalldata = hex"";
-```
-
-Run the script with broadcast:
-
-```bash
-forge script script/DiamondUpgradeExample.s.sol:DiamondUpgradeExample \
-  --rpc-url $RPC_URL \
-  --private-key $PK \
-  --broadcast
-```
-
-No environment variables or CLI parameters are required; all configuration is set within the script file.
-
-### Notes & Best Practices
-
-- The helper relies on the diamond implementing `IDiamondLoupe` for replace/add-missing/extend logic to work correctly.
-- `buildReplaceCutByName` filters out selectors that are either missing on the diamond or already mapped to the provided facet address, avoiding `SameSelectorReplacement` reverts.
-- `buildAddMissingCutByName` ensures only new selectors (not present on the diamond) are added.
-- `buildExtendCutsByName` combines both behaviors to migrate existing selectors to a new facet and add new selectors in one call.
-- For fresh deployments, prefer add-only; for migrations, prefer extend or replace.
-- If you need per-selector control, you can manually filter the arrays returned by `generateSelectors(facetName)` in your own helper or use the signature hash directly.
-
-### Troubleshooting
-
-- Empty selector arrays cause `NoSelectorsInFacet()` reverts. Ensure your cuts contain at least one selector.
-- Ensure facet names match the contract names compiled in your repo.
-- Ensure FFI is enabled and `forge` is available on PATH; `forge inspect` is invoked from Solidity via `vm.ffi`.
-- On very large scripts, if you hit "stack too deep", refactor into smaller functions (the provided script already does this).
+After these five files, the architecture usually clicks.
