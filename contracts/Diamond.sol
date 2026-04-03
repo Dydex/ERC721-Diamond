@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 /******************************************************************************\
-* Author: Nick Mudge <nick@perfectabstractions.com> (https://twitter.com/mudgen)
 * EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
 *
 * Implementation of a diamond.
@@ -10,10 +9,31 @@ pragma solidity ^0.8.0;
 
 import {LibDiamond} from "./libraries/LibDiamond.sol";
 import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
+import {AppStorage} from "./libraries/AppStorage.sol";
 
 contract Diamond {
-    constructor(address _contractOwner, address _diamondCutFacet) payable {
+    AppStorage internal s;
+
+    constructor(
+        address _contractOwner,
+        address _diamondCutFacet,
+        string memory _erc20Name,
+        string memory _erc20Symbol,
+        uint8 _erc20Decimals,
+        string memory _erc721Name,
+        string memory _erc721Symbol
+    ) payable {
+        require(_contractOwner != address(0), "Diamond: invalid owner");
         LibDiamond.setContractOwner(_contractOwner);
+
+        // Initialize ERC20 metadata
+        s.erc20Name = _erc20Name;
+        s.erc20Symbol = _erc20Symbol;
+        s.erc20Decimals = _erc20Decimals;
+
+        // Initialize ERC721 metadata
+        s.erc721name = _erc721Name;
+        s.erc721symbol = _erc721Symbol;
 
         // Add the diamondCut external function from the diamondCutFacet
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
@@ -56,11 +76,6 @@ contract Diamond {
                 return(0, returndatasize())
             }
         }
-    }
-
-    //immutable function example
-    function example() public pure returns (string memory) {
-        return "THIS IS AN EXAMPLE OF AN IMMUTABLE FUNCTION";
     }
 
     receive() external payable {}
