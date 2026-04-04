@@ -7,7 +7,7 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 contract StakingFacet {
     AppStorage internal s;
 
-    // Use ERC721-style Transfer event for NFT movements
+    
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
     event NFTStaked(address indexed staker, uint256 indexed tokenId, uint256 unlockTime);
     event NFTUnstaked(address indexed staker, uint256 indexed tokenId);
@@ -19,20 +19,17 @@ contract StakingFacet {
         _;
     }
 
-    // Owner sets lockPeriod (seconds) and rewardAmount (in ERC20 tokens)
     function setStakingConfig(uint256 _lockPeriod, uint256 _rewardAmount) external onlyOwner {
         s.stakeLockPeriod = _lockPeriod;
         s.stakeRewardAmount = _rewardAmount;
         emit StakingConfigUpdated(_lockPeriod, _rewardAmount);
     }
 
-    // Stake an ERC721 token (user must own it)
     function stakeNFT(uint256 _tokenId) external {
         require(s.owners[_tokenId] == msg.sender, "Staking: not token owner");
         require(s.stakes[_tokenId].staker == address(0), "Staking: already staked");
         require(s.stakeLockPeriod > 0, "Staking: lock period not set");
 
-        // Internal NFT transfer: user → diamond
         _transferNFT(msg.sender, address(this), _tokenId);
 
         uint256 unlockTime = block.timestamp + s.stakeLockPeriod;
@@ -46,7 +43,6 @@ contract StakingFacet {
         emit NFTStaked(msg.sender, _tokenId, unlockTime);
     }
 
-    // Unstake after lock period ends
     function unstakeNFT(uint256 _tokenId) external {
         StakePosition memory pos = s.stakes[_tokenId];
         require(pos.staker == msg.sender, "Staking: not staker");
@@ -55,13 +51,11 @@ contract StakingFacet {
 
         delete s.stakes[_tokenId];
 
-        // Internal NFT transfer: diamond → user
         _transferNFT(address(this), msg.sender, _tokenId);
 
         emit NFTUnstaked(msg.sender, _tokenId);
     }
 
-    // Claim ERC20 reward after lock period (can claim while still staked)
     function claimReward(uint256 _tokenId) external {
         StakePosition storage pos = s.stakes[_tokenId];
         require(pos.staker == msg.sender, "Staking: not staker");
@@ -74,14 +68,12 @@ contract StakingFacet {
 
         pos.rewardClaimed = true;
 
-        // Internal ERC20 transfer: diamond → user
         s.erc20Balances[address(this)] -= reward;
         s.erc20Balances[msg.sender] += reward;
 
         emit RewardClaimed(msg.sender, _tokenId, reward);
     }
 
-    // ── View Functions ──────────────────────────────────────────────────────
 
     function stakeInfo(uint256 _tokenId)
         external
@@ -110,7 +102,6 @@ contract StakingFacet {
         return (s.stakeLockPeriod, s.stakeRewardAmount);
     }
 
-    // ── Internal ────────────────────────────────────────────────────────────
 
     function _transferNFT(address _from, address _to, uint256 _tokenId) private {
         delete s.tokenApprovals[_tokenId];

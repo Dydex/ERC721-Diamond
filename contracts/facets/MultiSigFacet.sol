@@ -6,7 +6,6 @@ import {AppStorage, MultiSigTransaction} from "../libraries/AppStorage.sol";
 contract MultiSigFacet {
     AppStorage internal s;
 
-    // ── Events ──────────────────────────────────────────────────────────────
     event MultiSigInitialized(address[] signers, uint256 quorum);
     event TransactionSubmitted(uint256 indexed txId, address indexed to, uint256 value, bytes data);
     event TransactionConfirmed(uint256 indexed txId, address indexed signer);
@@ -16,7 +15,7 @@ contract MultiSigFacet {
     event SignerRemoved(address indexed signer);
     event QuorumChanged(uint256 newQuorum);
 
-    // ── Modifiers ───────────────────────────────────────────────────────────
+
 
     modifier onlySigner() {
         require(s.msIsSigner[msg.sender], "MultiSig: not a signer");
@@ -38,9 +37,6 @@ contract MultiSigFacet {
         _;
     }
 
-    // ── Initialization ──────────────────────────────────────────────────────
-
-    // One-time multisig setup
     function initializeMultiSig(address[] calldata _signers, uint256 _quorum) external {
         require(!s.msInitialized, "MultiSig: already initialized");
         require(_signers.length > 0, "MultiSig: no signers");
@@ -60,9 +56,6 @@ contract MultiSigFacet {
         emit MultiSigInitialized(_signers, _quorum);
     }
 
-    // ── Core Functions ──────────────────────────────────────────────────────
-
-    // Submit a new transaction proposal
     function submitTransaction(
         address _to,
         uint256 _value,
@@ -130,9 +123,7 @@ contract MultiSigFacet {
         emit TransactionExecuted(_txId);
     }
 
-    // ── Governance (only callable via multisig execution) ───────────────────
-
-    // Add a new signer — must be executed through the multisig
+    // Add a new signer 
     function addSigner(address _signer) external onlySelf {
         require(_signer != address(0), "MultiSig: zero address");
         require(!s.msIsSigner[_signer], "MultiSig: already a signer");
@@ -143,7 +134,7 @@ contract MultiSigFacet {
         emit SignerAdded(_signer);
     }
 
-    // Remove a signer — must be executed through the multisig
+    // Remove a signer 
     function removeSigner(address _signer) external onlySelf {
         require(s.msIsSigner[_signer], "MultiSig: not a signer");
         require(s.msSigners.length - 1 >= s.msQuorum, "MultiSig: would break quorum");
@@ -168,8 +159,6 @@ contract MultiSigFacet {
         s.msQuorum = _newQuorum;
         emit QuorumChanged(_newQuorum);
     }
-
-    // ── View Functions ──────────────────────────────────────────────────────
 
     function getTransaction(uint256 _txId)
         external

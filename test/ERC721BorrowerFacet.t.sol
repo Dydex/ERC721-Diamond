@@ -39,7 +39,7 @@ contract ERC721BorrowerFacetTest is DiamondUpgradeHelper {
         IDiamondCut.FacetCut[] memory setupCuts = buildAddCutsByNames(setupFacetAddresses, setupFacetNames);
         executeDiamondCut(IDiamondCut(address(diamond)), setupCuts, address(0), "");
 
-        ERC721Facet(address(diamond)).mint(ownerNft, 1);
+        ERC721Facet(address(diamond)).erc721mint(ownerNft);
 
         IDiamondCut.FacetCut[] memory erc20Cuts = buildExtendCutsByName(
             IDiamondLoupe(address(diamond)),

@@ -15,24 +15,21 @@ contract SVGFacet {
         _;
     }
 
-    // Owner sets a custom collection SVG template (stored on-chain)
     function setCollectionSvg(string calldata _svg) external onlyOwner {
         require(bytes(_svg).length > 0, "SVG: empty");
         s.collectionSvg = _svg;
         emit SvgUpdated();
     }
 
-    // Read the raw custom SVG template
     function collectionSvg() external view returns (string memory) {
         return s.collectionSvg;
     }
 
-    // Get the on-chain SVG for a specific token
+
     function getSVG(uint256 tokenId) external view returns (string memory) {
         return LibSVG.buildRawSVG(tokenId);
     }
 
-    // Get the full data-URI metadata for a specific token
     function getTokenURI(uint256 tokenId) external view returns (string memory) {
         return LibSVG.buildTokenURI(tokenId);
     }

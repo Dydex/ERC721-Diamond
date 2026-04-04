@@ -29,22 +29,22 @@ contract ERC721FacetTest is DiamondUpgradeHelper {
 	function testMintAndTransferFrom() public {
 		ERC721Facet token = ERC721Facet(address(diamond));
 
-		bool minted = token.mint(alice, 1);
+		bool minted = token.erc721mint(alice);
 		assertTrue(minted);
 		assertEq(token.ownerOf(1), alice);
-		assertEq(token.balanceOf(alice), 1);
+		assertEq(token.erc721balanceOf(alice), 1);
 
 		vm.prank(alice);
-		token.transferFrom(alice, bob, 1);
+		token.erc721transferFrom(alice, bob, 1);
 
 		assertEq(token.ownerOf(1), bob);
-		assertEq(token.balanceOf(alice), 0);
-		assertEq(token.balanceOf(bob), 1);
+		assertEq(token.erc721balanceOf(alice), 0);
+		assertEq(token.erc721balanceOf(bob), 1);
 	}
 
 	function testTokenUriAfterMint() public {
 		ERC721Facet token = ERC721Facet(address(diamond));
-		token.mint(alice, 7);
+		token.erc721mint(alice);
 
 		string memory uri = token.tokenURI(7);
 		assertGt(bytes(uri).length, 0);

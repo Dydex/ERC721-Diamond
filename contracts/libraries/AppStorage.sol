@@ -1,6 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+struct Traits{
+        uint16 attack;
+        uint16 defense;
+        bool mage;
+        uint256 requestId;
+    }
+
+
+ struct RequestStatus {
+    bool fulfilled; // whether the request has been successfully fulfilled
+    bool exists; // whether a requestId exists
+    uint256[] randomWords;
+  }
+
+struct ReqData{
+uint256 subscriptionId;
+bytes32 keyHash;
+uint32 callbackGasLimit;
+uint16 requestConfirmations;
+uint32 numWords;
+address vrfCoordinator;
+}
+
 struct StakePosition {
     address staker;
     uint256 stakedAt;
@@ -31,6 +54,10 @@ struct BorrowPosition {
 
 struct AppStorage {
     // ERC721
+    uint256 nextTokenId;
+     mapping(uint256 => Traits) nftTraits;
+     mapping(uint256 => RequestStatus) requests;
+     ReqData reqData; 
     string erc721name;
     string erc721symbol;
     mapping(uint256 => address) owners;

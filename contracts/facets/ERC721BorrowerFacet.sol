@@ -7,7 +7,7 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 contract ERC721BorrowerFacet {
     AppStorage internal s;
 
-    // ERC721 Transfer event for NFT movements
+    
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
     event CollateralFeeSet(uint256 fee);
     event RepaymentPeriodSet(uint256 period);
@@ -20,9 +20,7 @@ contract ERC721BorrowerFacet {
     modifier onlyOwner() {
         LibDiamond.enforceIsContractOwner();
         _;
-    }
-
-    // ── Admin ───────────────────────────────────────────────────────────────
+    } 
 
     // Set the ERC20 collateral fee required to borrow an NFT
     function setCollateralFee(uint256 _fee) external onlyOwner {
@@ -38,16 +36,13 @@ contract ERC721BorrowerFacet {
         emit RepaymentPeriodSet(_period);
     }
 
-    // ── Owner Actions ───────────────────────────────────────────────────────
-
-    // NFT owner lists their token for borrowing (escrowed in diamond)
+   
     function listForBorrow(uint256 _tokenId) external {
         require(s.owners[_tokenId] == msg.sender, "Borrower: not token owner");
         require(s.borrows[_tokenId].originalOwner == address(0), "Borrower: already listed");
         require(s.borrowCollateralFee > 0, "Borrower: collateral fee not set");
         require(s.borrowRepaymentPeriod > 0, "Borrower: repayment period not set");
 
-        // Escrow the NFT in the diamond
         _transferNFT(msg.sender, address(this), _tokenId);
 
         s.borrows[_tokenId] = BorrowPosition({
@@ -60,7 +55,7 @@ contract ERC721BorrowerFacet {
         emit ListedForBorrow(_tokenId, msg.sender);
     }
 
-    // Owner cancels borrow listing (only if not yet borrowed)
+    
     function delistBorrow(uint256 _tokenId) external {
         BorrowPosition storage pos = s.borrows[_tokenId];
         require(pos.originalOwner == msg.sender, "Borrower: not original owner");
@@ -74,9 +69,7 @@ contract ERC721BorrowerFacet {
         emit DelistedFromBorrow(_tokenId, msg.sender);
     }
 
-    // ── Borrower Actions ────────────────────────────────────────────────────
-
-    // Borrow a listed NFT by depositing ERC20 collateral
+    
     function borrowNFT(uint256 _tokenId) external {
         BorrowPosition storage pos = s.borrows[_tokenId];
         require(pos.originalOwner != address(0), "Borrower: not listed");
@@ -86,11 +79,9 @@ contract ERC721BorrowerFacet {
         uint256 fee = s.borrowCollateralFee;
         require(s.erc20Balances[msg.sender] >= fee, "Borrower: insufficient ERC20 collateral");
 
-        // Lock ERC20 collateral in the diamond
         s.erc20Balances[msg.sender] -= fee;
         s.erc20Balances[address(this)] += fee;
 
-        // Transfer NFT from diamond to borrower
         _transferNFT(address(this), msg.sender, _tokenId);
 
         pos.borrower = msg.sender;
@@ -100,7 +91,6 @@ contract ERC721BorrowerFacet {
         emit NFTBorrowed(_tokenId, msg.sender, fee, pos.returnDeadline);
     }
 
-    // Borrower returns NFT before deadline and gets collateral back
     function returnNFT(uint256 _tokenId) external {
         BorrowPosition storage pos = s.borrows[_tokenId];
         require(pos.borrower == msg.sender, "Borrower: not borrower");
@@ -112,17 +102,14 @@ contract ERC721BorrowerFacet {
 
         delete s.borrows[_tokenId];
 
-        // Return NFT to original owner
         _transferNFT(msg.sender, originalOwner, _tokenId);
 
-        // Return collateral to borrower
         s.erc20Balances[address(this)] -= collateral;
         s.erc20Balances[msg.sender] += collateral;
 
         emit NFTReturned(_tokenId, msg.sender);
     }
 
-    // Liquidate an overdue borrow — collateral goes to original owner
     function liquidate(uint256 _tokenId) external {
         BorrowPosition storage pos = s.borrows[_tokenId];
         require(pos.borrower != address(0), "Borrower: not borrowed");
@@ -133,14 +120,12 @@ contract ERC721BorrowerFacet {
 
         delete s.borrows[_tokenId];
 
-        // Collateral goes to original owner; NFT stays with borrower
         s.erc20Balances[address(this)] -= collateral;
         s.erc20Balances[originalOwner] += collateral;
 
         emit BorrowLiquidated(_tokenId, originalOwner, collateral);
     }
 
-    // ── View Functions ──────────────────────────────────────────────────────
 
     function getBorrowInfo(uint256 _tokenId)
         external
@@ -163,8 +148,6 @@ contract ERC721BorrowerFacet {
     function getRepaymentPeriod() external view returns (uint256) {
         return s.borrowRepaymentPeriod;
     }
-
-    // ── Internal ────────────────────────────────────────────────────────────
 
     function _transferNFT(address _from, address _to, uint256 _tokenId) private {
         delete s.tokenApprovals[_tokenId];

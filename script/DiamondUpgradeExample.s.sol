@@ -5,9 +5,16 @@ import "forge-std/Script.sol";
 import {IDiamondCut} from "../contracts/interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "../contracts/interfaces/IDiamondLoupe.sol";
 import {DiamondUpgradeHelper} from "../test/helpers/DiamondUpgradeHelper.sol";
+import "../contracts/facets/ERC721facet.sol";
+import "../contracts/facets/VRFfacet.sol";
+import "../contracts/facets/DiamondLoupeFacet.sol";
+import "../contracts/facets/OwnershipFacet.sol";
+import "../contracts/Diamond.sol";
+import "../contracts/libraries/AppStorage.sol";
 
 contract DiamondUpgradeExample is Script, DiamondUpgradeHelper {
     function run() external {
+
         // Define all inputs explicitly here:
         address diamond = address(0x000000000000000000000000000000000000dEaD); // TODO set
 

@@ -36,7 +36,7 @@ contract SVGFacetTest is DiamondUpgradeHelper {
         ERC721Facet nft = ERC721Facet(address(diamond));
         SVGFacet svg = SVGFacet(address(diamond));
 
-        nft.mint(address(this), 1);
+        nft.erc721mint(address(this));
 
         string memory custom = "<svg xmlns='http://www.w3.org/2000/svg'><text x='10' y='20'>hello</text></svg>";
         svg.setCollectionSvg(custom);

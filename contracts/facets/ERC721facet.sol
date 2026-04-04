@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {AppStorage} from "../libraries/AppStorage.sol";
+import {AppStorage, Traits, ReqData} from "../libraries/AppStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {LibSVG} from "../libraries/LibSVG.sol";
 import {IERC721} from "../interfaces/IERC721.sol";
 import {IERC721Receiver} from "../interfaces/IERC721Receiver.sol";
+import './VRFfacet.sol';
 
-contract ERC721Facet is IERC721 {
+contract ERC721Facet {
     AppStorage internal s;
+
+    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
+    event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
 
     modifier onlyOwner() {
         LibDiamond.enforceIsContractOwner();
         _;
     }
 
-    // ── Metadata ────────────────────────────────────────────────────────────
+    // Metadata 
 
-    function name() external view returns (string memory) {
+    function erc721name() external view returns (string memory) {
         return s.erc721name;
     }
 
-    function symbol() external view returns (string memory) {
+    function erc721symbol() external view returns (string memory) {
         return s.erc721symbol;
     }
 
@@ -30,20 +35,23 @@ contract ERC721Facet is IERC721 {
         return LibSVG.buildTokenURI(_tokenId);
     }
 
-    function totalSupply() external view returns (uint256) {
+     function getTokenData(uint256 _tokenId) public view returns (Traits memory) {
+        return resolveTraits(_tokenId);
+    }
+
+    function erc721totalSupply() external view returns (uint256) {
         return s.totalSupply;
     }
 
-    // ── Mint ────────────────────────────────────────────────────────────────
-
-    function mint(address _to, uint256 _tokenId) external onlyOwner returns (bool) {
+    function erc721mint(address _to) external onlyOwner returns (bool) {
+        uint256 _tokenId = s.nextTokenId;
         _mint(_to, _tokenId);
         return true;
     }
 
-    // ── ERC721 Standard ─────────────────────────────────────────────────────
+    //  ERC721 Standard 
 
-    function balanceOf(address _owner) external view returns (uint256) {
+    function erc721balanceOf(address _owner) external view returns (uint256) {
         require(_owner != address(0), "ERC721: zero address query");
         return s.balances[_owner];
     }
@@ -54,7 +62,7 @@ contract ERC721Facet is IERC721 {
         return owner;
     }
 
-    function approve(address _approved, uint256 _tokenId) external payable {
+    function erc721approve(address _approved, uint256 _tokenId) external payable {
         address owner = ownerOf(_tokenId);
         require(_approved != owner, "ERC721: approval to current owner");
         require(
@@ -80,15 +88,15 @@ contract ERC721Facet is IERC721 {
         return s.operatorApprovals[_owner][_operator];
     }
 
-    function transferFrom(address _from, address _to, uint256 _tokenId) external payable {
+    function erc721transferFrom(address _from, address _to, uint256 _tokenId) external payable {
         _transfer(_from, _to, _tokenId, msg.sender, "");
     }
 
-    function safeTransferFrom(address _from, address _to, uint256 _tokenId) external payable {
+    function erc721safeTransferFrom(address _from, address _to, uint256 _tokenId) external payable {
         _transfer(_from, _to, _tokenId, msg.sender, "");
     }
 
-    function safeTransferFrom(
+    function erc721safeTransferFrom(
         address _from,
         address _to,
         uint256 _tokenId,
@@ -97,14 +105,16 @@ contract ERC721Facet is IERC721 {
         _transfer(_from, _to, _tokenId, msg.sender, _data);
     }
 
-    // ── Internal ────────────────────────────────────────────────────────────
+    //  Internal function
 
     function _mint(address _to, uint256 _tokenId) internal {
         require(_to != address(0), "ERC721: mint to zero address");
         require(s.owners[_tokenId] == address(0), "ERC721: token already minted");
+
         s.owners[_tokenId] = _to;
         s.balances[_to] += 1;
         s.totalSupply += 1;
+        VRFFacet(address(this)).getWords(_tokenId);
         emit Transfer(address(0), _to, _tokenId);
     }
 
@@ -144,4 +154,29 @@ contract ERC721Facet is IERC721 {
             s.operatorApprovals[owner][_spender]
         );
     }
+
+    function resolveTraits(uint256 _tokenId) internal view returns(Traits memory t) {
+        //check that the tokenId has a valid randWord/s
+        uint256 requestId = s.nftTraits[_tokenId].requestId;
+        t.requestId = requestId;
+
+        //check that it is fulfilled
+        if(s.requests[requestId].fulfilled) {
+            uint256[] memory randW = new uint256[](2);
+            randW[0] = s.requests[requestId].randomWords[0];
+            randW[1] = s.requests[requestId].randomWords[1];
+
+            //resolve traits
+            t.attack = uint16(randW[0]);
+            t.defense = 0xffff & uint16((randW[0] >> 10));
+            t.mage = (randW[1] % 2) == 0 ? false : true;
+        
+        }
+        return t ;
+    }
+
+function setReqData(ReqData memory r) public {
+    LibDiamond.enforceIsContractOwner();
+    s.reqData = r;
+}
 }
