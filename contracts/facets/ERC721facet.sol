@@ -113,6 +113,7 @@ contract ERC721Facet {
 
         s.owners[_tokenId] = _to;
         s.balances[_to] += 1;
+        s.nextTokenId += 1;
         s.totalSupply += 1;
         VRFFacet(address(this)).getWords(_tokenId);
         emit Transfer(address(0), _to, _tokenId);
