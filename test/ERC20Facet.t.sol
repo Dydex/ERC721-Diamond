@@ -26,11 +26,36 @@ contract ERC20FacetTest is DiamondUpgradeHelper {
 		executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
 	}
 
+	function testNameSymbolDecimals() public {
+		ERC20Facet token = ERC20Facet(address(diamond));
+		
+		assertEq(token.name(), "DribbleToken");
+		assertEq(token.symbol(), "DT");
+		assertEq(token.decimals(), 18);
+	}
+
 	function testMintAndTransfer() public {
 		ERC20Facet token = ERC20Facet(address(diamond));
 
 		token.mint(alice, 1_000);
-		vm.prank(alice);
+
+		vm.expectRevert("ERC20: mint to zero address");
+		token.mint(address(0), 100);
+
+		vm.expectRevert("ERC20: invalid amount");
+		token.mint(alice, 0);
+
+		vm.startPrank(alice);
+
+		vm.expectRevert("ERC20: invalid address");
+		token.transfer(address(0), 100);
+
+		vm.expectRevert("ERC20: invalid amount");
+		token.transfer(bob, 0);
+
+		vm.expectRevert("ERC20: insufficient balance");
+		token.transfer(bob, 1_001);
+
 		bool ok = token.transfer(bob, 250);
 
 		assertTrue(ok);
@@ -46,9 +71,21 @@ contract ERC20FacetTest is DiamondUpgradeHelper {
 		vm.prank(alice);
 		token.approve(address(this), 300);
 
+		vm.expectRevert("ERC20: invalid address");
+		token.transferFrom(alice, address(0), 100);
+
+		vm.expectRevert("ERC20: insufficient allowance");
+		token.transferFrom(alice, bob, 301);
+
+		vm.prank(alice);
+		token.approve(address(this), 600);
+
+		vm.expectRevert("ERC20: insufficient balance");
+		token.transferFrom(alice, bob, 530);
+
 		bool ok = token.transferFrom(alice, bob, 200);
 		assertTrue(ok);
-		assertEq(token.allowance(alice, address(this)), 100);
+		assertEq(token.allowance(alice, address(this)), 400);
 		assertEq(token.balanceOf(alice), 300);
 		assertEq(token.balanceOf(bob), 200);
 	}

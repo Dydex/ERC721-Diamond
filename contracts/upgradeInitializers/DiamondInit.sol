@@ -8,6 +8,7 @@ pragma solidity ^0.8.0;
 /******************************************************************************/
 
 import {LibDiamond} from "../libraries/LibDiamond.sol";
+import {AppStorage} from "../libraries/AppStorage.sol";
 import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
@@ -18,6 +19,7 @@ import { IERC165 } from "../interfaces/IERC165.sol";
 // of your diamond. Add parameters to the init funciton if you need to.
 
 contract DiamondInit {    
+    AppStorage internal s;
 
     // You can add parameters to this function in order to pass in 
     // data to set your own state variables
@@ -28,6 +30,11 @@ contract DiamondInit {
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = true;
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
+
+        // Start ERC721 minting at tokenId 1 when the collection has not minted yet.
+        if (s.nextTokenId == 0) {
+            s.nextTokenId = 1;
+        }
 
         // add your own state variables 
         // EIP-2535 specifies that the `diamondCut` function takes two optional 
